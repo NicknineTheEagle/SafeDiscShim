@@ -14,18 +14,18 @@ void logging::SetupLogger() {
   /* Set log level */
   TCHAR envLogLevel[32767];
   GetEnvironmentVariable("SAFEDISCSHIM_LOGLEVEL", envLogLevel, sizeof(envLogLevel));
-  if ( GetLastError() == ERROR_ENVVAR_NOT_FOUND ) {
+  if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
 #ifdef _DEBUG
     spdlog::set_level(spdlog::level::trace);
 #else
     // don't output logs if envvar is not defined
-    return;
+    spdlog::set_level(spdlog::level::off);
 #endif
   }
   else spdlog::cfg::helpers::load_levels(envLogLevel);
 
   /* Return early if logs are off, so files are not created */
-  if ( spdlog::get_level() == spdlog::level::off )
+  if (spdlog::get_level() == spdlog::level::off)
     return;
 
   /* Log to ringbuffer until we can determine log file name later */
@@ -40,12 +40,16 @@ void logging::SetupLogger() {
 }
 
 void logging::SetLoggerFileName(const std::string& fileName) {
+  /* Return early if logs are off, so files are not created */
+  if (spdlog::get_level() == spdlog::level::off)
+    return;
+
   try {
     const auto logger = spdlog::basic_logger_mt("file",
       fileName, true);
     spdlog::set_default_logger(logger);
   }
-  catch (const spdlog::spdlog_ex &ex) {
+  catch (const spdlog::spdlog_ex& ex) {
     spdlog::info("Error logging to file ({}), logging to stdout instead.",
       ex.what());
   }
