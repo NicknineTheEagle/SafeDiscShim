@@ -5,6 +5,8 @@
 #include "process.h"
 #include "logging.h"
 
+extern bool IsSafeDiscV1();
+
 Process::Process(HANDLE hProcess) {
   this->hProcess = hProcess;
   if ( !GetPEB() ) return;
@@ -72,6 +74,10 @@ void Process::InjectIntoExecutable(HANDLE hThread, bool resumeThread) {
   wchar_t dllName[MAX_PATH];
   GetSystemDirectoryW(dllName, MAX_PATH);
   wcscat_s(dllName, L"\\drvmgt.dll");
+  if (GetFileAttributesW(dllName) == INVALID_FILE_ATTRIBUTES && IsSafeDiscV1()) {
+    // allow replacing drvmgt.dll in game dir for SafeDisc 1
+    wcscpy_s(dllName, L"drvmgt.dll");
+  }
   LPVOID pMemory = VirtualAllocEx(hProcess, nullptr, sizeof(dllName),
     MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 

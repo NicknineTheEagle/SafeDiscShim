@@ -229,11 +229,20 @@ bool IsSafeDiscV1() {
   return true;
 }
 
+bool IsICD() {
+  wchar_t exeName[MAX_PATH];
+  GetModuleFileNameW(nullptr, exeName, MAX_PATH);
+  wchar_t* extension = wcsrchr(exeName, L'.');
+  return (extension && _wcsicmp(extension, L".icd") == 0);
+}
+
 BOOL WINAPI DllMain(HINSTANCE /*hinstDLL*/, DWORD fdwReason, LPVOID /*lpvReserved*/) {
   switch( fdwReason ) {
   case DLL_PROCESS_ATTACH:
     if (!IsUALPresent()) {
-      if (!IsSafeDiscV1())
+      if (IsICD())
+        Initialize();
+      else if (!IsSafeDiscV1())
         RunFromEntryPoint(Initialize);
     }
     break;
