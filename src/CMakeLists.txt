@@ -5,7 +5,7 @@ project(SafeDiscShim VERSION 0.1.1
         DESCRIPTION ""
         LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 add_library(${PROJECT_NAME} SHARED
         dllmain.cpp

@@ -1,5 +1,6 @@
 #include <psapi.h>
 #include <process.h> // For CRT atexit functions
+#include <stacktrace>
 #include <MinHook.h>
 
 #include "hooks.h"
@@ -13,6 +14,23 @@ namespace {
   DWORD prevPageProtection;
 }
 
+bool IsModuleUAL(HMODULE mod) {
+  if (GetProcAddress(mod, "IsUltimateASILoader") != NULL || (GetProcAddress(mod, "DirectInput8Create") != NULL && GetProcAddress(mod, "DirectSoundCreate8") != NULL && GetProcAddress(mod, "InternetOpenA") != NULL))
+    return true;
+  return false;
+}
+
+bool IsUALPresent() {
+  for (const auto& entry : std::stacktrace::current()) {
+    HMODULE hModule = NULL;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)entry.native_handle(), &hModule)) {
+      if (IsModuleUAL(hModule))
+        return true;
+    }
+  }
+  return false;
+}
+
 bool Initialize() {
   logging::SetupLogger();
 
@@ -20,27 +38,30 @@ bool Initialize() {
     spdlog::critical("Unable to initialize MinHook");
     return false;
   }
-  spdlog::debug("Initialized MinHook");
+  spdlog::trace("Initialized MinHook");
 
-  // CreateProcess needs to be hooked for both executables
-  if ( MH_CreateHookApi(L"kernel32", "CreateProcessA", &hooks::CreateProcessA_Hook,
-      reinterpret_cast<LPVOID*>(&hooks::CreateProcessA_Orig)) != MH_OK ) {
-    spdlog::critical("Unable to hook CreateProcessA");
-    return false;
-  }
-  spdlog::debug("Hooked CreateProcessA");
+  // if UAL is present, we trust it to load the shim into each game exe
+  if (!IsUALPresent()) {
+    // CreateProcess needs to be hooked for both executables
+    if (MH_CreateHookApi(L"kernel32", "CreateProcessA", &hooks::CreateProcessA_Hook,
+      reinterpret_cast<LPVOID*>(&hooks::CreateProcessA_Orig)) != MH_OK) {
+      spdlog::critical("Unable to hook CreateProcessA");
+      return false;
+    }
+    spdlog::trace("Hooked CreateProcessA");
 
-  if ( MH_CreateHookApi(L"kernel32", "CreateProcessW", &hooks::CreateProcessW_Hook,
-      reinterpret_cast<LPVOID*>(&hooks::CreateProcessW_Orig)) != MH_OK ) {
-    spdlog::critical("Unable to hook CreateProcessW");
-    return false;
-  }
-  spdlog::debug("Hooked CreateProcessW");
+    if (MH_CreateHookApi(L"kernel32", "CreateProcessW", &hooks::CreateProcessW_Hook,
+      reinterpret_cast<LPVOID*>(&hooks::CreateProcessW_Orig)) != MH_OK) {
+      spdlog::critical("Unable to hook CreateProcessW");
+      return false;
+    }
+    spdlog::trace("Hooked CreateProcessW");
 
-  if ( MH_EnableHook(MH_ALL_HOOKS) != MH_OK ) {
-    spdlog::critical("Unable to enable CreateProcess hooks");
+    if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
+      spdlog::critical("Unable to enable CreateProcess hooks");
+    }
+    spdlog::trace("Enabled CreateProcess hooks");
   }
-  spdlog::debug("Enabled CreateProcess hooks");
 
   char exeName[MAX_PATH];
   GetModuleFileNameA(nullptr, exeName, MAX_PATH);
@@ -93,6 +114,8 @@ bool Initialize() {
     const std::string loggerFileName = std::string(exeName) + "_SafeDiscShim.log";
     logging::SetLoggerFileName(loggerFileName);
 
+    SetEnvironmentVariableW(L"SAFEDISCSHIM_INJECTED", L"1");
+
     if ( MH_CreateHookApi(L"ntdll", "NtDeviceIoControlFile",
       &hooks::NtDeviceIoControlFile_Hook,
       reinterpret_cast<LPVOID*>(&hooks::NtDeviceIoControlFile_Orig)) != MH_OK ) {
@@ -107,16 +130,13 @@ bool Initialize() {
       return false;
     }
     spdlog::trace("Hooked CreateFileA");
-  }
 
-  if ( MH_EnableHook(MH_ALL_HOOKS) != MH_OK ) {
-    spdlog::critical("Unable to enable IOCTL hooks");
-    return false;
+    if ( MH_EnableHook(MH_ALL_HOOKS) != MH_OK ) {
+      spdlog::critical("Unable to enable IOCTL hooks");
+      return false;
+    }
+    spdlog::trace("Enabled IOCTL hooks");
   }
-  spdlog::trace("Enabled IOCTL hooks");
-
-  std::wstring eventName = L"Global\\SafeDiscShimInject." +
-  std::to_wstring(GetCurrentProcessId());
 
   return true;
 }
@@ -212,8 +232,10 @@ bool IsSafeDiscV1() {
 BOOL WINAPI DllMain(HINSTANCE /*hinstDLL*/, DWORD fdwReason, LPVOID /*lpvReserved*/) {
   switch( fdwReason ) {
   case DLL_PROCESS_ATTACH:
-    if (!IsSafeDiscV1())
-      RunFromEntryPoint(Initialize);
+    if (!IsUALPresent()) {
+      if (!IsSafeDiscV1())
+        RunFromEntryPoint(Initialize);
+    }
     break;
   case DLL_THREAD_ATTACH:
   case DLL_THREAD_DETACH:
@@ -221,9 +243,13 @@ BOOL WINAPI DllMain(HINSTANCE /*hinstDLL*/, DWORD fdwReason, LPVOID /*lpvReserve
   default:
     break;
   }
-  return true;
+  return TRUE;
 }
 
+
+extern "C" __declspec(dllexport) void InitializeASI() {
+  Initialize();
+}
 
 // Exported functions from the original drvmgt.dll. 100 = success
 extern "C" __declspec(dllexport) int Setup(LPCSTR /*lpSubKey*/, char* /*FullPath*/) {
