@@ -16,13 +16,13 @@ protected games and intercepts any communication requests that would have been s
 expected response itself and allowing the game to boot.
 
 ## Installation Instructions
-Simply download the [latest release](https://github.com/RibShark/SafeDiscShim/releases/latest) and run the installer.
-Once installed, SafeDiscShim should automatically insert itself into most SafeDisc protected games.
+Download the [latest release](https://github.com/NicknineTheEagle/SafeDiscShim/releases/latest) and follow the instructions for SafeDisc version your game uses.
 
-For a few games utilizing SafeDisc v1, SafeDiscShim may not work properly without first deleting the "drvmgt.dll" file
-that is located in the same folder as the game executable. If you find a game where this is the case, please write an 
-[issue report](https://github.com/RibShark/SafeDiscShim/issues) detailing the name and specific release of the game so
-a specific compatibility profile can be created to bypass the problem.
+### SafeDisc 1
+Rename drvmgt.asi from the release to drvmgt.dll and copy it next to the game executable.
+
+### SafeDisc 2+
+Simply copy both files from the release next to next to the game executable. You might need to rename dinput8.dll to one of the other system dll names supported by Ultimate ASI Loader, it depends on which libraries the game uses (see https://github.com/ThirteenAG/Ultimate-ASI-Loader).
 
 ## Logging
 To aid with debugging, beta versions of SafeDiscShim will automatically create log files in the same folder as the 
